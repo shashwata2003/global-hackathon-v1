@@ -1,0 +1,47 @@
+[
+  {
+    "column_name": "TransactionID",
+    "data_type": "string",
+    "description": "A unique identifier for each business transaction."
+  },
+  {
+    "column_name": "Sender",
+    "data_type": "string",
+    "description": "The name of the individual or entity initiating the transaction."
+  },
+  {
+    "column_name": "Receiver",
+    "data_type": "string",
+    "description": "The name of the individual or entity receiving the transaction."
+  },
+  {
+    "column_name": "Country",
+    "data_type": "string",
+    "description": "The country associated with the transaction, often indicating location of sender or receiver."
+  },
+  {
+    "column_name": "Currency",
+    "data_type": "string",
+    "description": "The three-letter ISO 4217 code for the currency used in the transaction."
+  },
+  {
+    "column_name": "Amount",
+    "data_type": "float",
+    "description": "The monetary value of the transaction. May contain missing or invalid data represented by '???'."
+  },
+  {
+    "column_name": "PaymentMethod",
+    "data_type": "string",
+    "description": "The specific method used for the payment, such as 'Bank Transfer' or 'Credit Card'."
+  },
+  {
+    "column_name": "Status",
+    "data_type": "string",
+    "description": "The current processing status of the transaction, e.g., 'Completed', 'Failed', 'Pending'."
+  },
+  {
+    "column_name": "Timestamp",
+    "data_type": "datetime",
+    "description": "The date and time when the transaction was initiated or recorded."
+  }
+]
