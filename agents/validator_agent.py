@@ -72,9 +72,7 @@ Now, reply only with one word: valid or not valid.
         return "valid"
     elif "not valid" in text:
         return "not valid"
-    else:
-        # fallback if unclear
-        return "not valid"
+
 
 # ----------------------------
 # LangGraph Node Wrapper
@@ -90,7 +88,6 @@ def validator_agent_node(state: DataPipelineState) -> DataPipelineState:
         result = validate_output_with_gemini(state.plan, state.user_query, state.queried_data)
         state.validation_result = result
         state.add_log(f"Validator Agent: Validation result -> {result}")
-        result = "valid"
         if result == "valid":
             state.next = "Output"  # proceed to output agent
         else:

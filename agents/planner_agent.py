@@ -85,10 +85,13 @@ agents can follow to satisfy the user query.
 
 Constraints:
 - Respond ONLY with valid JSON (no extra text).
-- Use the column names EXACTLY as provided in the metadata.
-- For "filters" prefer conservative suggestions (e.g., date ranges, categories).
-- Provide "hints" to downstream agents about parsing/casting issues (e.g., 'cast Amount to numeric, handle "N/A"').
-- Include "confidence" (0.0-1.0). If uncertain, set confidence < 0.6.
+- Use the column names EXACTLY as provided in the metadata for existing columns.
+- If the user question requires a derived metric (e.g., "transaction count", "total sales"), include it in the "aggregations" section:
+    - "type": aggregation function (sum, count, avg, min, max)
+    - "column": existing column to aggregate
+    - "alias": name of the new derived column (e.g., TransactionCount, TotalAmount)
+- Make sure any derived columns you create here can be directly used in the SQL query by the SQL agent.
+
 
 Required JSON schema (produce these keys):
 {{
@@ -109,6 +112,25 @@ Required JSON schema (produce these keys):
   "confidence": <float 0.0 - 1.0>,
   "explain": "<1-2 sentence human-readable explanation of plan>"
 }}
+
+Example:
+{{
+  "plan_id": "123e4567-e89b-12d3-a456-426614174000",
+  "columns_to_use": ["Country", "TransactionID"],
+  "filters": [],
+  "aggregations": [
+    {{"type": "count", "column": "TransactionID", "alias": "TransactionCount"}}
+  ],
+  "group_by": ["Country"],
+  "order_by": [{{"column": "TransactionCount", "direction": "desc"}}],
+  "limit": 10,
+  "sql_template": null,
+  "hints": ["Ensure TransactionID is valid before counting"],
+  "steps": ["Group by Country and count transactions"],
+  "confidence": 0.95,
+  "explain": "Count transactions per country to understand transaction distribution."
+}}
+
 
 Input metadata (trimmed):
 {metadata_summary}

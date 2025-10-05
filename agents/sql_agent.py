@@ -2,9 +2,22 @@ import sqlite3
 import pandas as pd
 import os
 import json
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
 from state import DataPipelineState
+from dotenv import load_dotenv
+from google import genai
+from typing import Optional
+
+load_dotenv()
+
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def _init_genai_client(api_key: Optional[str] = None):
+    if api_key is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not found in environment. Set it before running.")
+    return genai.Client(api_key=api_key)
 
 
 # ----------------------------
@@ -26,10 +39,7 @@ def df_to_sqlite(df: pd.DataFrame, db_path: str = "temp_db.sqlite", table_name: 
 # ----------------------------
 # Generate SQL using LLM
 # ----------------------------
-def generate_sql_with_llm(plan: dict, df: pd.DataFrame, model_name: str = "gemini-1.5-pro") -> str:
-    """
-    Use an LLM to generate SQL from the planner plan and DataFrame schema.
-    """
+def generate_sql_with_llm(plan: dict, df: pd.DataFrame, model_name: str = MODEL_NAME) -> str:
     if not plan:
         raise ValueError("Planner plan is empty.")
 
@@ -38,40 +48,42 @@ def generate_sql_with_llm(plan: dict, df: pd.DataFrame, model_name: str = "gemin
         "sample_rows": df.head(3).to_dict(orient="records")
     }
 
-    prompt = ChatPromptTemplate.from_template("""
-    You are a helpful SQL generation assistant. Given a data table and a user plan,
-    write a valid SQLite SQL query that fulfills the plan.
+    prompt = f"""
+You are a helpful SQL generation assistant. Given a data table and a user plan,
+write a valid SQLite SQL query that fulfills the plan.
 
-    Table schema:
-    {schema}
+Table schema:
+{json.dumps(schema_info, indent=2)}
 
-    Planner plan (JSON):
-    {plan}
+Planner plan (JSON):
+{json.dumps(plan, indent=2)}
 
-    Rules:
-    - Use only valid SQLite syntax.
-    - Assume the table name is "data".
-    - Always output *only* the SQL query, nothing else.
-    """)
+Rules:
+- Use only valid SQLite syntax.
+- Assume the table name is "data".
+- Always output *only* the SQL query, nothing else.
+- You may reference derived columns suggested in 'derived_columns'.
 
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
-    chain = prompt | llm
+"""
 
-    sql_query = chain.invoke({
-        "schema": json.dumps(schema_info, indent=2),
-        "plan": json.dumps(plan, indent=2)
-    }).content.strip()
+    client = _init_genai_client()
+    response = client.models.generate_content(model=model_name, contents=[prompt])
+
+    # Extract raw SQL
+    raw_sql = response.candidates[0].content.parts[0].text
+
+    # Remove ```sqlite or ``` if present
+    sql_query = raw_sql.strip().replace("```sqlite", "").replace("```", "").strip()
 
     return sql_query
+
+
 
 
 # ----------------------------
 # SQL Agent Node
 # ----------------------------
 def sql_agent_node(state: DataPipelineState, db_path: str = "temp_db.sqlite") -> DataPipelineState:
-    """
-    LangGraph node: generates SQL via LLM and executes it on the SQLite DB.
-    """
     try:
         if not hasattr(state, "df") or state.df is None:
             raise ValueError("State has no DataFrame (state.df) to query.")
@@ -100,3 +112,50 @@ def sql_agent_node(state: DataPipelineState, db_path: str = "temp_db.sqlite") ->
         state.add_log(f"SQL Agent Error: {str(e)}")
         state.queried_data = None
         return state
+
+
+# # ----------------------------
+# # Main function to test
+# # ----------------------------
+# def main():
+#     # Sample DataFrame
+#     df = pd.DataFrame({
+#         "region": ["North", "South", "East", "West", "North"],
+#         "sales": [100, 150, 200, 130, 170],
+#         "quarter": ["Q1", "Q1", "Q1", "Q1", "Q2"]
+#     })
+
+#     # Sample Planner Plan
+#     plan = {
+#         "goal": "Calculate total sales by region for the last quarter",
+#         "aggregations": [{"column": "sales", "operation": "sum"}],
+#         "group_by": ["region"]
+#     }
+
+#     # Initialize State
+#     state = DataPipelineState(
+#         user_query="Show total sales by region for the last quarter",
+#         df=df,
+#         plan=plan
+#     )
+
+#     # Run SQL Agent
+#     state = sql_agent_node(state)
+
+#     # Print Results
+#     print("\n=== Logs ===")
+#     for log in state.logs:
+#         print(log)
+
+#     print("\n=== Generated SQL Query ===")
+#     print(state.sql_query)
+
+#     print("\n=== Query Results ===")
+#     if state.queried_data is not None:
+#         print(state.queried_data)
+#     else:
+#         print("No data returned from query.")
+
+
+# if __name__ == "__main__":
+#     main()

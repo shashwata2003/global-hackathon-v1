@@ -35,6 +35,9 @@ Your task is to:
 1. Suggest the most appropriate type(s) of chart(s) (bar, line, pie, scatter, histogram, etc.).
 2. Identify which columns should be used for each chart.
 3. Write 2-3 concise business insights based on the data.
+4. donot give ant backticks like ```json or ```.
+5. Insights should be valid and based on the data sample.
+6. For Charts use column names present in the data sample only.
 
 Respond in **valid JSON** format exactly like this:
 {{
@@ -70,11 +73,11 @@ def run_output_agent(state: DataPipelineState) -> DataPipelineState:
     Generates visualization suggestions and business insights 
     using queried data and metadata.
     """
-    if state.queried_output is None or state.queried_output.empty:
+    if state.queried_data is None or state.queried_data.empty:
         raise ValueError("No data available for output generation.")
 
     # Get a small representative data sample
-    data_sample = state.queried_output.head(5).to_dict(orient="records")
+    data_sample = state.queried_data.to_dict(orient="records")
 
     # Build chain (Prompt → Gemini LLM)
     chain = insight_prompt | llm
@@ -94,7 +97,7 @@ def run_output_agent(state: DataPipelineState) -> DataPipelineState:
             "charts": [],
             "insights": [response.content.strip()]
         }
-
+    
     state.output = parsed_output
     print("\n🧠 Output Agent Suggestions:\n", json.dumps(parsed_output, indent=2))
     return state

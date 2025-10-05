@@ -33,6 +33,7 @@ class DataPipelineState(BaseModel):
     insights: Optional[str] = None
     visuals: Optional[List[str]] = None
     next: str = ""
+    output: Optional[Dict[str, Any]] = None
 
     # --- System Logs ---
     logs: List[str] = []

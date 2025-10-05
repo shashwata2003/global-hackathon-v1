@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from langgraph.graph import StateGraph, END
 from agents.planner_agent import planner_node
 from agents.sql_agent import sql_agent_node
@@ -7,7 +8,6 @@ from agents.validator_agent import validator_agent_node
 from agents.output_agent import run_output_agent
 from generatemetadata import generate_metadata_from_df
 from state import DataPipelineState
-
 
 # -----------------------
 # Build LangGraph
@@ -34,12 +34,10 @@ def build_graph():
             return "planner_agent"
 
     graph.add_conditional_edges("validator_agent", check_validation)
-
     graph.set_entry_point("planner_agent")
     graph.add_edge("output_agent", END)
 
     return graph.compile()
-
 
 # -----------------------
 # Streamlit UI
@@ -54,28 +52,38 @@ st.write(
     """
 )
 
-uploaded_file = st.file_uploader("📂 Upload CSV file", type=["csv"])
-user_query = st.text_input("💬 Enter your query:", placeholder="e.g., Show me total sales by region for the last quarter")
+uploaded_file = st.file_uploader("📂 Upload CSV/Excel file", type=["csv", "xlsx"])
 
-if uploaded_file and user_query:
+if uploaded_file:
+    # Load file
     try:
-        # Load data
-        df = pd.read_csv(uploaded_file)
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+
         st.success("✅ File uploaded successfully!")
-        st.write("### Preview of Data")
+
+        # Display sample & summary
+        st.write("### 📄 Preview of Data")
         st.dataframe(df.head())
 
-        # Generate metadata
-        metadata = generate_metadata_from_df(df)
+        st.write("### ℹ️ Dataset Summary")
+        st.write(f"- Number of rows: {df.shape[0]}")
+        st.write(f"- Number of columns: {df.shape[1]}")
+        st.write(f"- Columns: {', '.join(df.columns)}")
 
-        # Initialize state
-        state = DataPipelineState(
-            metadata=metadata,
-            user_query=user_query,
-            df = df,
-            queried_output=None,
-            output=None
-        )
+        # If query is provided
+        user_query = st.text_input("💬 Enter your query:", placeholder="e.g., Show me total sales by region for the last quarter")
+        if user_query:
+            metadata = generate_metadata_from_df(df)
+            state = DataPipelineState(
+                metadata=metadata,
+                user_query=user_query,
+                df=df,
+                queried_output=None,
+                output=None
+            )
 
         if st.button("🚀 Run Pipeline"):
             with st.spinner("Running multi-agent pipeline..."):
@@ -83,14 +91,44 @@ if uploaded_file and user_query:
                 final_state = app.invoke(state)
 
             st.success("✅ Pipeline Execution Complete!")
-            st.write("### 🧩 Final Output:")
-            if isinstance(final_state.output, pd.DataFrame):
-                st.dataframe(final_state.output)
-            else:
-                st.write(final_state.output)
+
+            # Debug: show raw output
+            st.write("### 🔹 Raw Pipeline Output")
+            st.write(final_state["output"]["charts"])
+
+            # Display insights
+            if final_state.get("output") and final_state["output"]:
+                insights = final_state["output"].get("insights", [])
+                if insights:
+                    st.write("### 💡 Insights")
+                    for insight in insights:
+                        st.write(f"- {insight}")
+
+                # # Display charts
+                # charts = final_state["output"].get("charts", [])
+                # if charts:
+                #     st.write("### 📊 Charts")
+                #     for chart in charts:
+                #         chart_type = chart.get("type")
+                #         x_col = chart.get("x")
+                #         y_col = chart.get("y")
+                #         title = chart.get("title", "")
+
+                #         plot_df = getattr(final_state, "queried_data", df)
+
+                #         if chart_type == "bar":
+                #             fig = px.bar(plot_df, x=x_col, y=y_col, title=title)
+                #             st.plotly_chart(fig, use_container_width=True)
+                #         elif chart_type == "line":
+                #             fig = px.line(plot_df, x=x_col, y=y_col, title=title)
+                #             st.plotly_chart(fig, use_container_width=True)
+                #         elif chart_type == "scatter":
+                #             fig = px.scatter(plot_df, x=x_col, y=y_col, title=title)
+                #             st.plotly_chart(fig, use_container_width=True)
+
 
     except Exception as e:
-        st.error(f"❌ Error: {e}")
+        st.error(f"❌ Error loading file: {e}")
 
 else:
-    st.info("📥 Please upload a CSV file and enter a query to begin.")
+    st.info("📥 Please upload a CSV or Excel file to begin.")
