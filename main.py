@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+# import plotly.express as px
 from langgraph.graph import StateGraph, END
 from agents.planner_agent import planner_node
 from agents.sql_agent import sql_agent_node
