@@ -176,7 +176,7 @@ def planner_node(state: DataPipelineState, config: Any = None, runtime: Any = No
 
     try:
         plan = generate_plan_with_gemini(state.metadata, state.user_query)
-        state.plan = plan.get("explain", "")
+        state.plan = plan  
         state.plan_steps = plan.get("steps", [])
         state.add_log(f"Planner: Generated plan with confidence {plan.get('confidence', 0)}.")
         # The planner determines next node
@@ -188,25 +188,25 @@ def planner_node(state: DataPipelineState, config: Any = None, runtime: Any = No
         return state
 
 
-# --------------------------
-# Quick example: run planner standalone
-# --------------------------
-if __name__ == "__main__":
-    # Very small mock metadata (in your system you'd load metadata.json)
-    sample_metadata = [
-        {"column_name": "TransactionID", "data_type": "string", "description": "Transaction unique ID", "sample_values": ["a1","b2","c3"]},
-        {"column_name": "Sender", "data_type": "string", "description": "Sender name or account", "sample_values": ["Alice","Bob"]},
-        {"column_name": "Receiver", "data_type": "string", "description": "Receiver name or account", "sample_values": ["Charlie","David"]},
-        {"column_name": "Amount", "data_type": "float_or_string", "description": "Transaction amount (may include 'N/A')", "sample_values": ["123.45","N/A","???" ]},
-        {"column_name": "Timestamp", "data_type": "string", "description": "Event timestamp (various formats)", "sample_values": ["2024-04-12","12/04/2024","03-05-2025 14:55:23"]}
-    ]
+# # --------------------------
+# # Quick example: run planner standalone
+# # --------------------------
+# if __name__ == "__main__":
+#     # Very small mock metadata (in your system you'd load metadata.json)
+#     sample_metadata = [
+#         {"column_name": "TransactionID", "data_type": "string", "description": "Transaction unique ID", "sample_values": ["a1","b2","c3"]},
+#         {"column_name": "Sender", "data_type": "string", "description": "Sender name or account", "sample_values": ["Alice","Bob"]},
+#         {"column_name": "Receiver", "data_type": "string", "description": "Receiver name or account", "sample_values": ["Charlie","David"]},
+#         {"column_name": "Amount", "data_type": "float_or_string", "description": "Transaction amount (may include 'N/A')", "sample_values": ["123.45","N/A","???" ]},
+#         {"column_name": "Timestamp", "data_type": "string", "description": "Event timestamp (various formats)", "sample_values": ["2024-04-12","12/04/2024","03-05-2025 14:55:23"]}
+#     ]
 
-    # small test question
-    q = "Why did our sales dip in September 2025? Show top drivers by product and country."
+#     # small test question
+#     q = "Why did our sales dip in September 2025? Show top drivers by product and country."
 
-    # ensure env var is set (or set before running)
-    if not os.getenv("GEMINI_API_KEY"):
-        print("Set GEMINI_API_KEY environment variable before running this example.")
-    else:
-        plan = generate_plan_with_gemini(sample_metadata, q)
-        print(json.dumps(plan, indent=2, ensure_ascii=False))
+#     # ensure env var is set (or set before running)
+#     if not os.getenv("GEMINI_API_KEY"):
+#         print("Set GEMINI_API_KEY environment variable before running this example.")
+#     else:
+#         plan = generate_plan_with_gemini(sample_metadata, q)
+#         print(json.dumps(plan, indent=2, ensure_ascii=False))

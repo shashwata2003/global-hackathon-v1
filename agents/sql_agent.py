@@ -1,19 +1,19 @@
 import sqlite3
 import pandas as pd
+import os
+import json
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
 from state import DataPipelineState
+
 
 # ----------------------------
 # Convert DataFrame to SQLite
 # ----------------------------
 def df_to_sqlite(df: pd.DataFrame, db_path: str = "temp_db.sqlite", table_name: str = "data"):
-    """
-    Load a pandas DataFrame into SQLite.
-    Overwrites existing database file.
-    """
     if df is None or df.empty:
         raise ValueError("DataFrame is empty or None")
 
-    # Overwrite DB if exists
     if os.path.exists(db_path):
         os.remove(db_path)
 
@@ -22,100 +22,70 @@ def df_to_sqlite(df: pd.DataFrame, db_path: str = "temp_db.sqlite", table_name: 
     conn.close()
     return db_path, table_name
 
+
 # ----------------------------
-# Generate SQL from Planner output
+# Generate SQL using LLM
 # ----------------------------
-def generate_sql_from_plan(plan: dict, table_name: str) -> str:
+def generate_sql_with_llm(plan: dict, df: pd.DataFrame, model_name: str = "gemini-1.5-pro") -> str:
+    """
+    Use an LLM to generate SQL from the planner plan and DataFrame schema.
+    """
     if not plan:
         raise ValueError("Planner plan is empty.")
 
-    # SELECT columns
-    columns = plan.get("columns_to_use", ["*"])
-    select_clause = ", ".join(columns)
+    schema_info = {
+        "columns": list(df.columns),
+        "sample_rows": df.head(3).to_dict(orient="records")
+    }
 
-    # Aggregations
-    aggs = plan.get("aggregations", [])
-    agg_clauses = []
-    for agg in aggs:
-        col = agg.get("column")
-        typ = agg.get("type")
-        alias = agg.get("alias", f"{typ}_{col}")
-        if typ == "sum":
-            agg_clauses.append(f"SUM({col}) AS {alias}")
-        elif typ == "avg":
-            agg_clauses.append(f"AVG({col}) AS {alias}")
-        elif typ == "count":
-            agg_clauses.append(f"COUNT({col}) AS {alias}")
-        elif typ == "min":
-            agg_clauses.append(f"MIN({col}) AS {alias}")
-        elif typ == "max":
-            agg_clauses.append(f"MAX({col}) AS {alias}")
-        elif typ == "pct_change":
-            agg_clauses.append(f"{col} AS {alias}")
+    prompt = ChatPromptTemplate.from_template("""
+    You are a helpful SQL generation assistant. Given a data table and a user plan,
+    write a valid SQLite SQL query that fulfills the plan.
 
-    if agg_clauses:
-        select_clause += ", " + ", ".join(agg_clauses)
+    Table schema:
+    {schema}
 
-    # FROM
-    sql = f"SELECT {select_clause} FROM {table_name}"
+    Planner plan (JSON):
+    {plan}
 
-    # WHERE filters
-    filters = plan.get("filters", [])
-    where_clauses = []
-    for f in filters:
-        col = f.get("column")
-        op = f.get("operator", "=")
-        val = f.get("value")
-        if isinstance(val, str):
-            val = f"'{val}'"
-        elif isinstance(val, list):
-            if op.lower() == "between" and len(val) == 2:
-                val = f"{val[0]} AND {val[1]}"
-                op = "BETWEEN"
-            else:
-                val = "(" + ", ".join([f"'{v}'" if isinstance(v, str) else str(v) for v in val]) + ")"
-        where_clauses.append(f"{col} {op} {val}")
+    Rules:
+    - Use only valid SQLite syntax.
+    - Assume the table name is "data".
+    - Always output *only* the SQL query, nothing else.
+    """)
 
-    if where_clauses:
-        sql += " WHERE " + " AND ".join(where_clauses)
+    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
+    chain = prompt | llm
 
-    # GROUP BY
-    group_by = plan.get("group_by", [])
-    if group_by:
-        sql += " GROUP BY " + ", ".join(group_by)
+    sql_query = chain.invoke({
+        "schema": json.dumps(schema_info, indent=2),
+        "plan": json.dumps(plan, indent=2)
+    }).content.strip()
 
-    # ORDER BY
-    order_by = plan.get("order_by", [])
-    if order_by:
-        order_clauses = [f"{o['column']} {o['direction']}" for o in order_by]
-        sql += " ORDER BY " + ", ".join(order_clauses)
+    return sql_query
 
-    # LIMIT
-    limit = plan.get("limit")
-    if limit:
-        sql += f" LIMIT {limit}"
-
-    return sql + ";"
 
 # ----------------------------
 # SQL Agent Node
 # ----------------------------
 def sql_agent_node(state: DataPipelineState, db_path: str = "temp_db.sqlite") -> DataPipelineState:
     """
-    LangGraph node: executes SQL generated from Planner plan using a DataFrame stored in state.df.
+    LangGraph node: generates SQL via LLM and executes it on the SQLite DB.
     """
     try:
         if not hasattr(state, "df") or state.df is None:
             raise ValueError("State has no DataFrame (state.df) to query.")
+        if not hasattr(state, "plan") or state.plan is None:
+            raise ValueError("Planner output (state.plan) is missing.")
 
         # Convert DataFrame to SQLite
         db_path, table_name = df_to_sqlite(state.df, db_path=db_path)
         state.add_log(f"SQL Agent: DataFrame loaded into {db_path} as table {table_name}")
 
-        # Generate SQL
-        sql_query = generate_sql_from_plan(state.plan, table_name)
+        # Generate SQL using LLM
+        sql_query = generate_sql_with_llm(state.plan, state.df)
         state.sql_query = sql_query
-        state.add_log(f"SQL Agent: Generated SQL query:\n{sql_query}")
+        state.add_log(f"SQL Agent: Generated SQL query via LLM:\n{sql_query}")
 
         # Execute SQL
         conn = sqlite3.connect(db_path)

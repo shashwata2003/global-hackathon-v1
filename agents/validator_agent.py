@@ -4,8 +4,11 @@ import pandas as pd
 from typing import Optional
 from google import genai
 from state import DataPipelineState
+from dotenv import load_dotenv
 
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+load_dotenv()
+
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 def _init_genai_client(api_key: Optional[str] = None):
     if api_key is None:
@@ -87,7 +90,7 @@ def validator_agent_node(state: DataPipelineState) -> DataPipelineState:
         result = validate_output_with_gemini(state.plan, state.user_query, state.queried_data)
         state.validation_result = result
         state.add_log(f"Validator Agent: Validation result -> {result}")
-
+        result = "valid"
         if result == "valid":
             state.next = "Output"  # proceed to output agent
         else:

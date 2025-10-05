@@ -3,20 +3,40 @@ from langchain_core.prompts import ChatPromptTemplate
 from state import DataPipelineState
 import pandas as pd
 import json
+from dotenv import load_dotenv
+import os
+from typing import Optional
 
-# LLM Initialization (Gemini)
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
+# --------------------------
+# Load Environment Variables
+# --------------------------
+load_dotenv()
 
-# Prompt for generating visualization insights
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("⚠️ GEMINI_API_KEY not found in .env or environment variables.")
+
+# --------------------------
+# Initialize Gemini LLM via LangChain
+# --------------------------
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",  # use "gemini-1.5-pro" if you want deeper reasoning
+    temperature=0.2,
+    api_key=api_key
+)
+
+# --------------------------
+# Prompt Template
+# --------------------------
 insight_prompt = ChatPromptTemplate.from_template("""
-You are a data visualization and insights expert. 
-You are given a sample of queried data from a CSV file. 
+You are a data visualization and insights expert.
+You are given a sample of queried data from a CSV file.
 Your task is to:
-1. Suggest the most appropriate type(s) of chart(s) (like bar, line, pie, scatter, histogram, etc.) to visualize the data.
+1. Suggest the most appropriate type(s) of chart(s) (bar, line, pie, scatter, histogram, etc.).
 2. Identify which columns should be used for each chart.
-3. Write 2-3 clear and concise insights or observations a business person can understand from this data.
+3. Write 2-3 concise business insights based on the data.
 
-Respond in **valid JSON** format as:
+Respond in **valid JSON** format exactly like this:
 {{
   "charts": [
     {{
@@ -42,30 +62,34 @@ User Query:
 {user_query}
 """)
 
+# --------------------------
+# Output Agent Function
+# --------------------------
 def run_output_agent(state: DataPipelineState) -> DataPipelineState:
     """
-    Generates insights and chart instructions from the queried data.
+    Generates visualization suggestions and business insights 
+    using queried data and metadata.
     """
-
     if state.queried_output is None or state.queried_output.empty:
         raise ValueError("No data available for output generation.")
 
-    # Get a small data sample for the LLM (to avoid token overload)
+    # Get a small representative data sample
     data_sample = state.queried_output.head(5).to_dict(orient="records")
 
-    # Create the prompt
+    # Build chain (Prompt → Gemini LLM)
     chain = insight_prompt | llm
 
+    # Run LLM
     response = chain.invoke({
         "data_sample": json.dumps(data_sample, indent=2),
         "metadata": json.dumps(state.metadata, indent=2),
         "user_query": state.user_query
     })
 
+    # Parse JSON safely
     try:
         parsed_output = json.loads(response.content)
     except Exception:
-        # fallback for non-JSON responses
         parsed_output = {
             "charts": [],
             "insights": [response.content.strip()]
