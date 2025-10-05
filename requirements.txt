@@ -20,7 +20,7 @@ google-auth-httplib2==0.2.0
 google-genai==1.41.0
 google-generativeai==0.8.5
 langchain-google-genai==2.1.12
-google-ai-generativelanguage==0.7.0
+google-ai-generativelanguage==0.6.15
 googleapis-common-protos==1.70.0
 greenlet==3.2.4
 grpcio==1.75.1
